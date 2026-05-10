@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark theme-flow">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <title>Flow</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Переключаем Tailwind на ручное управление темной темой через класс 'dark'
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* БАЗОВЫЕ ПЕРЕМЕННЫЕ (Светлая тема) */
+        :root { 
+            --bg: #ffffff; --chat-bg: #f3f4f6; --txt: #1a1a1a; 
+            --snt: #8b5cf6; --rcv: #ffffff; --accent: #7c3aed; 
+            --gray: #94a3b8; --glass: rgba(255, 255, 255, 0.85);
+        }
+        
+        /* СТАНДАРТНАЯ ТЕМНАЯ ТЕМА */
+        html.dark { 
+            --bg: #0f172a; --chat-bg: #020617; --txt: #f8fafc; 
+            --snt: #7c3aed; --rcv: #1e293b; --gray: #64748b;
+            --glass: rgba(15, 23, 42, 0.85);
+        }
+        
+        /* ФИРМЕННАЯ ТЕМА FLOW (Глубокий фиолетовый) */
+        html.theme-flow {
+            --bg: #0b0213; --chat-bg: #040008; --txt: #f8fafc;
+            --snt: #7c3aed; --rcv: #170a29; --gray: #6b5c85;
+            --glass: rgba(11, 2, 19, 0.85);
+        }
+        html.theme-flow .dark\:bg-slate-900 { background-color: var(--bg) !important; }
+        html.theme-flow .dark\:bg-slate-800 { background-color: var(--rcv) !important; }
+        html.theme-flow .dark\:bg-white\/5 { background-color: rgba(124, 58, 237, 0.05) !important; }
+        
+        body { 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg); color: var(--txt); 
+            height: 100dvh; margin: 0; overflow: hidden; 
+            user-select: none; -webkit-user-select: none;
+        }
+
+        /* АНИМАЦИИ */
+        .anim-fade { animation: fadeIn 0.3s ease forwards; }
+        .anim-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .anim-msg { animation: msgIn 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1) forwards; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes msgIn { from { opacity: 0; transform: translateY(15px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+        .app-container { position: relative; height: 100%; width: 100%; display: flex; flex-direction: column; overflow: hidden; }
+
+        .page-layer { 
+            position: fixed; inset: 0; background: var(--bg); z-index: 100; 
+            transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; flex-direction: column;
+        }
+        body.chat-active .page-layer { transform: translateX(0); }
+
+        .nav-bar { 
+            height: 70px; background: var(--glass); backdrop-filter: blur(20px);
+            display: flex; border-top: 1px solid rgba(124, 58, 237, 0.1);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .nav-item { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--gray); font-size: 22px; transition: 0.3s; }
+        .nav-item.active { color: var(--accent); transform: scale(1.15); }
+
+        .bubble { 
+            max-width: 80%; padding: 10px 14px; border-radius: 20px; margin: 2px 0; font-size: 15px; 
+            position: relative; word-wrap: break-word; line-height: 1.4;
+        }
+        .snt { align-self: flex-end; background: var(--snt); color: white; border-bottom-right-radius: 4px; }
+        .rcv { align-self: flex-start; background: var(--rcv); color: var(--txt); border-bottom-left-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .msg-time { font-size: 10px; opacity: 0.6; margin-top: 4px; display: block; text-align: right; }
+
+        .avatar-box { border-radius: 35%; overflow: hidden; background: #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .online-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bg); position: absolute; bottom: -2px; right: -2px; background: #22c55e; }
+        
+        ::-webkit-scrollbar { width: 0; }
+        .chat-input-container { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+        /* Переключатели в настройках */
+        .toggle-checkbox:checked { right: 0; border-color: #68D391; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #8b5cf6; }
+    </style>
+</head>
+<body>
+
+    <div id="custom-toast" class="fixed top-10 left-1/2 -translate-x-1/2 bg-black/80 text-white px-6 py-3 rounded-full text-sm z-[3000] opacity-0 transition-all pointer-events-none text-center backdrop-blur-md"></div>
+
+    <div id="auth-page" class="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-slate-900">
+        <div class="w-full max-w-sm bg-white dark:bg-slate-800 p-8 rounded-[40px] shadow-2xl anim-slide-up">
+            <div class="flex justify-center mb-6">
+                <div class="w-16 h-16 bg-purple-600 rounded-[22px] flex items-center justify-center shadow-lg rotate-3"><i class="fa-solid fa-bolt text-white text-3xl"></i></div>
+            </div>
+            <h1 id="auth-title" class="text-3xl font-black text-center mb-8">Flow</h1>
+            <div class="space-y-4">
+                <input type="text" id="auth-id" placeholder="ID пользователя" class="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 transition-all text-lg">
+                <div id="name-container" class="hidden anim-fade"><input type="text" id="auth-name" placeholder="Ваше имя" class="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-2xl outline-none text-lg"></div>
+                <input type="password" id="auth-pass" placeholder="Пароль" class="w-full p-4 bg-slate-100 dark:bg-slate-700 rounded-2xl outline-none text-lg">
+                <button id="auth-action-btn" class="w-full bg-purple-600 text-white p-4 rounded-2xl font-bold text-lg active:scale-95 transition-transform">Войти</button>
+                <button id="auth-toggle" class="w-full text-purple-600 text-sm font-bold opacity-70 mt-2">Нет аккаунта? Создать</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app" class="app-container hidden">
+        <div class="flex-1 relative overflow-hidden">
+            
+            <div id="tab-chats" class="h-full flex flex-col anim-fade">
+                <header class="px-6 pt-10 pb-4 flex items-center justify-between">
+                    <h2 class="text-3xl font-black">Чаты</h2>
+                    <button id="btn-search" class="w-11 h-11 rounded-full bg-purple-600/10 text-purple-600 flex items-center justify-center active:scale-90 transition-transform"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </header>
+                <div id="contacts-list" class="flex-1 overflow-y-auto p-3 space-y-1"></div>
+            </div>
+
+            <div id="tab-profile" class="hidden h-full flex flex-col items-center p-8 pt-16 anim-fade overflow-y-auto">
+                <div class="relative w-32 h-32 mb-6" id="my-av-edit">
+                    <div class="w-full h-full avatar-box shadow-2xl border-4 border-purple-500/20">
+                        <span id="my-initials" class="text-4xl font-black text-purple-600">?</span>
+                        <img id="my-img" class="hidden w-full h-full object-cover">
+                    </div>
+                    <div class="absolute bottom-0 right-0 bg-purple-600 text-white w-9 h-9 rounded-full flex items-center justify-center border-4 border-white dark:border-slate-800 shadow-md"><i class="fa-solid fa-camera text-[12px]"></i></div>
+                    <input type="file" id="av-input" class="hidden" accept="image/*">
+                </div>
+                <input type="text" id="my-name-input" class="text-3xl font-black text-center bg-transparent border-none outline-none w-full" placeholder="Имя">
+                <p id="my-id-label" class="text-purple-600 font-bold opacity-60 mb-10">@username</p>
+                
+                <div class="w-full space-y-3 mt-auto mb-6">
+                    <button id="btn-save" class="w-full p-5 bg-purple-600 text-white rounded-[24px] font-bold shadow-lg active:scale-95 transition-transform">Сохранить профиль</button>
+                    <button id="btn-logout" class="w-full p-5 bg-red-500/10 text-red-500 rounded-[24px] font-bold active:scale-95 transition-transform">Выйти из аккаунта</button>
+                </div>
+            </div>
+
+            <div id="tab-settings" class="hidden h-full flex flex-col anim-fade overflow-y-auto pb-10">
+                <header class="px-6 pt-10 pb-4">
+                    <h2 class="text-3xl font-black">Настройки</h2>
+                </header>
+                <div class="p-6 space-y-8">
+                    
+                    <div>
+                        <h3 class="text-xs font-black text-purple-600 uppercase tracking-widest mb-3 px-2">Оформление</h3>
+                        <div class="bg-slate-50 dark:bg-slate-800 rounded-3xl p-2 flex gap-2 shadow-sm">
+                            <button id="theme-btn-light" class="theme-btn flex-1 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all" onclick="applyTheme('light')">Светлая</button>
+                            <button id="theme-btn-dark" class="theme-btn flex-1 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all" onclick="applyTheme('dark')">Темная</button>
+                            <button id="theme-btn-flow" class="theme-btn flex-1 py-3 rounded-2xl font-bold text-sm bg-purple-600 text-white shadow-lg active:scale-95 transition-all" onclick="applyTheme('flow')">Flow</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-xs font-black text-purple-600 uppercase tracking-widest mb-3 px-2">Чат</h3>
+                        <div class="bg-slate-50 dark:bg-slate-800 rounded-3xl p-5 flex justify-between items-center shadow-sm">
+                            <div>
+                                <div class="font-bold">Отправка по Enter</div>
+                                <div class="text-[11px] text-slate-500 mt-1">Отправлять текст нажатием Enter</div>
+                            </div>
+                            <input type="checkbox" id="set-enter" class="w-6 h-6 accent-purple-600 rounded-md">
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-xs font-black text-purple-600 uppercase tracking-widest mb-3 px-2">Приватность</h3>
+                        <div class="bg-slate-50 dark:bg-slate-800 rounded-3xl p-5 flex justify-between items-center shadow-sm">
+                            <div>
+                                <div class="font-bold text-red-500">Режим невидимки</div>
+                                <div class="text-[11px] text-slate-500 mt-1">Всегда показывать статус "Офлайн"</div>
+                            </div>
+                            <input type="checkbox" id="set-privacy" class="w-6 h-6 accent-red-500 rounded-md">
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+
+        <nav class="nav-bar">
+            <div class="nav-item active" id="nav-chats" onclick="switchTab('chats')"><i class="fa-solid fa-message"></i></div>
+            <div class="nav-item" id="nav-profile" onclick="switchTab('profile')"><i class="fa-solid fa-user-ninja"></i></div>
+            <div class="nav-item" id="nav-settings" onclick="switchTab('settings')"><i class="fa-solid fa-gear"></i></div>
+        </nav>
+    </div>
+
+    <main id="chat-view-page" class="page-layer">
+        <header class="p-3 flex items-center gap-3 border-b dark:border-white/5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md pt-[max(12px,env(safe-area-inset-top))]">
+            <button id="back-btn" class="w-10 h-10 flex items-center justify-center text-xl active:scale-75 transition-transform"><i class="fa-solid fa-arrow-left"></i></button>
+            <div class="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" id="chat-header-info">
+                <div class="w-10 h-10 avatar-box relative">
+                    <span id="h-initials" class="font-bold text-purple-600">?</span>
+                    <img id="h-img" class="hidden w-full h-full object-cover">
+                </div>
+                <div class="min-w-0">
+                    <div id="h-name" class="font-black text-sm truncate">...</div>
+                    <div id="h-status" class="text-[10px] font-bold uppercase transition-all">...</div>
+                </div>
+            </div>
+        </header>
+        <div id="msg-area" class="flex-1 overflow-y-auto p-4 flex flex-col gap-1 bg-[var(--chat-bg)]"></div>
+        <div class="p-3 bg-white dark:bg-slate-900 border-t dark:border-white/5 flex items-end gap-2 chat-input-container">
+            <button id="btn-clip" class="w-11 h-11 text-purple-600 text-xl flex-shrink-0 active:scale-90 transition-transform"><i class="fa-solid fa-paperclip"></i></button>
+            <textarea id="msg-input" rows="1" placeholder="Сообщение..." class="flex-1 bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl outline-none resize-none max-h-32 text-[15px]"></textarea>
+            <button id="btn-send" class="w-12 h-12 bg-purple-600 text-white rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 active:scale-90 transition-transform"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+    </main>
+
+    <div id="modal-search" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm anim-fade" onclick="closeModals()">
+        <div class="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[35px] p-8 anim-slide-up" onclick="event.stopPropagation()">
+            <h3 class="text-2xl font-black mb-6 text-center">Новый чат</h3>
+            <input type="text" id="search-input" placeholder="ID пользователя (@username)" class="w-full p-4 bg-slate-100 dark:bg-slate-800 rounded-2xl outline-none border-2 border-transparent focus:border-purple-600 mb-6 text-center text-lg">
+            <div class="flex gap-3">
+                <button onclick="closeModals()" class="flex-1 p-4 font-bold text-slate-400 bg-slate-100 dark:bg-white/5 rounded-2xl">Отмена</button>
+                <button id="do-search" class="flex-1 p-4 bg-purple-600 text-white rounded-2xl font-bold shadow-lg">Найти</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-user" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm anim-fade" onclick="closeModals()">
+        <div class="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[40px] p-8 flex flex-col items-center anim-slide-up" onclick="event.stopPropagation()">
+            <div class="w-24 h-24 avatar-box mb-4 shadow-2xl border-4 border-purple-500/20">
+                <span id="u-initials" class="text-4xl font-black text-purple-600">?</span>
+                <img id="u-img" class="hidden w-full h-full object-cover">
+            </div>
+            <h2 id="u-name" class="text-2xl font-black text-center mb-1 w-full truncate px-2">...</h2>
+            <p id="u-id" class="text-purple-600 font-bold opacity-60 mb-6">@id</p>
+            <div class="w-full p-5 bg-slate-50 dark:bg-white/5 rounded-[24px] flex justify-between items-center mb-6">
+                <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Статус</span>
+                <span id="u-status" class="font-bold">...</span>
+            </div>
+            <button onclick="closeModals()" class="w-full p-4 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-300 rounded-2xl font-bold">Закрыть</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA7jd4A1DEFQTO5bsR8oSRzugXP57G_viE",
+            authDomain: "mess-307e7.firebaseapp.com",
+            projectId: "mess-307e7",
+            appId: "1:338155889706:web:8c38479ab4c77284704f53"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let my = JSON.parse(localStorage.getItem('flow_user')) || null;
+        let flowSettings = JSON.parse(localStorage.getItem('flow_settings')) || { theme: 'flow', sendOnEnter: true, hidePrivacy: false };
+        let activeChatId = null, activeTargetId = null;
+        let isReg = false, msgUnsub = null, contactsUnsub = null;
+
+        const showToast = (t) => { const el = document.getElementById('custom-toast'); el.innerText = t; el.style.opacity = 1; setTimeout(() => el.style.opacity = 0, 2500); };
+        window.closeModals = () => { document.querySelectorAll('[id^="modal-"]').forEach(m => m.classList.add('hidden')); };
+        const reqFullscreen = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); };
+
+        // ИНИЦИАЛИЗАЦИЯ НАСТРОЕК
+        window.applyTheme = (t) => {
+            const h = document.documentElement;
+            h.classList.remove('dark', 'theme-flow');
+            if(t === 'dark') h.classList.add('dark');
+            if(t === 'flow') h.classList.add('dark', 'theme-flow');
+            
+            // Обновляем кнопки UI
+            document.querySelectorAll('.theme-btn').forEach(b => {
+                b.classList.remove('bg-purple-600', 'text-white', 'shadow-lg');
+                b.classList.add('text-slate-500', 'dark:text-slate-400'); // Сбрасываем стили
+            });
+            const activeBtn = document.getElementById('theme-btn-' + t);
+            activeBtn.classList.remove('text-slate-500', 'dark:text-slate-400');
+            activeBtn.classList.add('bg-purple-600', 'text-white', 'shadow-lg');
+
+            flowSettings.theme = t;
+            localStorage.setItem('flow_settings', JSON.stringify(flowSettings));
+        };
+        
+        applyTheme(flowSettings.theme);
+        document.getElementById('set-enter').checked = flowSettings.sendOnEnter;
+        document.getElementById('set-privacy').checked = flowSettings.hidePrivacy;
+
+        document.getElementById('set-enter').onchange = (e) => {
+            flowSettings.sendOnEnter = e.target.checked;
+            localStorage.setItem('flow_settings', JSON.stringify(flowSettings));
+        };
+
+        document.getElementById('set-privacy').onchange = async (e) => {
+            flowSettings.hidePrivacy = e.target.checked;
+            localStorage.setItem('flow_settings', JSON.stringify(flowSettings));
+            if(my) {
+                await updateDoc(doc(db, 'users', my.id), { online: !flowSettings.hidePrivacy });
+            }
+        };
+
+        // АВТОРИЗАЦИЯ
+        document.getElementById('auth-toggle').onclick = () => {
+            isReg = !isReg;
+            document.getElementById('auth-title').innerText = isReg ? "Новый аккаунт" : "Flow";
+            document.getElementById('name-container').classList.toggle('hidden', !isReg);
+            document.getElementById('auth-toggle').innerText = isReg ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Создать";
+        };
+
+        document.getElementById('auth-action-btn').onclick = async () => {
+            reqFullscreen(); 
+            const id = document.getElementById('auth-id').value.trim().toLowerCase(), pass = document.getElementById('auth-pass').value.trim(), name = document.getElementById('auth-name').value.trim();
+            if(!id || !pass) return showToast("Заполни поля");
+            const uRef = doc(db, 'users', id);
+            const s = await getDoc(uRef);
+            if(isReg) {
+                if(s.exists()) return showToast("Этот ID уже занят");
+                const user = { id, name, pass, avatar: '', online: true };
+                await setDoc(uRef, user); login(user);
+            } else {
+                if(!s.exists() || s.data().pass !== pass) return showToast("Неверный ID или пароль");
+                login(s.data());
+            }
+        };
+
+        async function login(u) {
+            my = u; localStorage.setItem('flow_user', JSON.stringify(my));
+            document.getElementById('auth-page').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            updateMyUI(); loadContacts();
+            if(!flowSettings.hidePrivacy) updateDoc(doc(db, 'users', my.id), { online: true });
+        }
+        if(my) login(my);
+
+        // ОБНОВЛЕНИЕ UI ПРОФИЛЯ
+        function updateMyUI() {
+            document.getElementById('my-name-input').value = my.name;
+            document.getElementById('my-id-label').innerText = '@' + my.id;
+            const init = document.getElementById('my-initials'), img = document.getElementById('my-img');
+            if(my.avatar) { img.src = my.avatar; img.classList.remove('hidden'); init.classList.add('hidden'); }
+            else { init.innerText = my.name[0].toUpperCase(); init.classList.remove('hidden'); img.classList.add('hidden'); }
+        }
+
+        document.getElementById('my-av-edit').onclick = () => document.getElementById('av-input').click();
+        document.getElementById('av-input').onchange = (e) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => { my.avatar = ev.target.result; updateMyUI(); };
+            reader.readAsDataURL(e.target.files[0]);
+        };
+        
+        document.getElementById('btn-save').onclick = async () => {
+            my.name = document.getElementById('my-name-input').value.trim();
+            await updateDoc(doc(db, 'users', my.id), { name: my.name, avatar: my.avatar });
+            localStorage.setItem('flow_user', JSON.stringify(my));
+            showToast("Профиль сохранен");
+        };
+
+        // ЗАГРУЗКА КОНТАКТОВ
+        function loadContacts() {
+            if(contactsUnsub) contactsUnsub();
+            contactsUnsub = onSnapshot(query(collection(db, 'chats'), orderBy('time', 'desc')), async (snap) => {
+                const contactsData = [];
+                const uniqueIds = new Set();
+
+                const sSnap = await getDoc(doc(db, 'chats', `saved_${my.id}`));
+                contactsData.push({ id: my.id, data: { name: 'Избранное', last: sSnap.exists() ? sSnap.data().last : 'Заметки' }, isSaved: true });
+                uniqueIds.add(my.id);
+
+                for(const d of snap.docs) {
+                    const data = d.data();
+                    if(!data.users?.includes(my.id) || d.id.startsWith('saved_')) continue;
+                    const tid = data.users.find(u => u !== my.id);
+                    if(tid && !uniqueIds.has(tid)) {
+                        uniqueIds.add(tid);
+                        const uS = await getDoc(doc(db, 'users', tid));
+                        if(uS.exists()) contactsData.push({ id: tid, data: {...data, ...uS.data()}, isSaved: false });
+                    }
+                }
+
+                const list = document.getElementById('contacts-list');
+                list.innerHTML = '';
+                contactsData.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = `anim-msg flex items-center gap-4 p-4 rounded-[28px] hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer active:scale-95 transition-all`;
+                    const avContent = item.isSaved ? `<i class="fa-solid fa-bookmark text-white text-xl"></i>` : (item.data.avatar ? `<img src="${item.data.avatar}" class="w-full h-full object-cover">` : `<span class="font-black text-purple-600 text-xl">${item.data.name[0].toUpperCase()}</span>`);
+                    div.innerHTML = `
+                        <div class="w-14 h-14 avatar-box ${item.isSaved ? 'bg-purple-600' : ''} relative">${avContent}${!item.isSaved && item.data.online ? '<div class="online-dot"></div>' : ''}</div>
+                        <div class="flex-1 min-w-0"><div class="font-black truncate">${item.data.name}</div><div class="text-xs text-slate-500 truncate">${item.data.last || '...'}</div></div>`;
+                    div.onclick = () => openChat(item.id);
+                    list.appendChild(div);
+                });
+            });
+        }
+
+        // ЧАТ
+        window.openChat = async (tid) => {
+            reqFullscreen();
+            activeTargetId = tid;
+            const isSaved = (tid === my.id);
+            activeChatId = isSaved ? `saved_${my.id}` : [my.id, tid].sort().join('_');
+            document.body.classList.add('chat-active');
+            
+            const area = document.getElementById('msg-area');
+            area.innerHTML = ''; 
+
+            if(!isSaved) {
+                onSnapshot(doc(db, 'users', tid), (s) => {
+                    const u = s.data();
+                    document.getElementById('h-name').innerText = u.name;
+                    const st = document.getElementById('h-status');
+                    st.innerText = u.online ? 'в сети' : 'офлайн';
+                    st.style.color = u.online ? '#22c55e' : '#94a3b8';
+                    const img = document.getElementById('h-img'), init = document.getElementById('h-initials');
+                    if(u.avatar) { img.src = u.avatar; img.classList.remove('hidden'); init.classList.add('hidden'); }
+                    else { init.innerText = u.name[0].toUpperCase(); init.classList.remove('hidden'); img.classList.add('hidden'); }
+                });
+            } else {
+                document.getElementById('h-name').innerText = "Избранное";
+                document.getElementById('h-status').innerText = "ЛИЧНОЕ ПРОСТРАНСТВО";
+                document.getElementById('h-status').style.color = '#8b5cf6';
+                document.getElementById('h-initials').innerHTML = '<i class="fa-solid fa-bookmark"></i>';
+            }
+
+            if(msgUnsub) msgUnsub();
+            msgUnsub = onSnapshot(query(collection(db, 'chats', activeChatId, 'messages'), orderBy('time', 'asc')), (s) => {
+                area.innerHTML = '';
+                s.docs.forEach(md => {
+                    const m = md.data();
+                    const d = document.createElement('div');
+                    d.className = `bubble anim-msg ${m.sender === my.id ? 'snt' : 'rcv'}`;
+                    const time = m.time ? new Date(m.time.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                    d.innerHTML = `${m.img ? `<img src="${m.img}" class="rounded-xl mb-2 max-w-full">` : ''}<div>${m.text || ''}</div><span class="msg-time">${time}</span>`;
+                    area.appendChild(d);
+                });
+                setTimeout(() => area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' }), 50);
+            });
+        };
+
+        // ПОИСК & ПРОФИЛЬ СОБЕСЕДНИКА
+        document.getElementById('btn-search').onclick = () => document.getElementById('modal-search').classList.remove('hidden');
+        document.getElementById('do-search').onclick = async () => {
+            const val = document.getElementById('search-input').value.trim().toLowerCase().replace('@','');
+            if(!val) return;
+            const s = await getDoc(doc(db, 'users', val));
+            if(s.exists()) { closeModals(); document.getElementById('search-input').value = ''; openChat(val); } 
+            else showToast("Пользователь не найден");
+        };
+
+        document.getElementById('chat-header-info').onclick = async () => {
+            if(activeTargetId === my.id) return;
+            const s = await getDoc(doc(db, 'users', activeTargetId));
+            const u = s.data();
+            document.getElementById('u-name').innerText = u.name;
+            document.getElementById('u-id').innerText = '@' + u.id;
+            const st = document.getElementById('u-status');
+            st.innerText = u.online ? 'ОНЛАЙН' : 'ОФЛАЙН';
+            st.className = `font-black text-[10px] ${u.online ? 'text-green-500' : 'text-slate-400'}`;
+            const img = document.getElementById('u-img'), init = document.getElementById('u-initials');
+            if(u.avatar) { img.src = u.avatar; img.classList.remove('hidden'); init.classList.add('hidden'); }
+            else { init.innerText = u.name[0].toUpperCase(); init.classList.remove('hidden'); img.classList.add('hidden'); }
+            document.getElementById('modal-user').classList.remove('hidden');
+        };
+
+        // ПЕРЕКЛЮЧЕНИЕ ВСТРОЕННЫХ ВКЛАДОК
+        window.switchTab = (t) => {
+            reqFullscreen();
+            ['chats', 'profile', 'settings'].forEach(tab => {
+                document.getElementById('tab-' + tab).classList.toggle('hidden', t !== tab);
+                document.getElementById('nav-' + tab).classList.toggle('active', t === tab);
+            });
+        };
+
+        // ОТПРАВКА СООБЩЕНИЙ
+        async function send() {
+            const el = document.getElementById('msg-input'), txt = el.value.trim();
+            if(!txt && !tempImg) return;
+            const img = tempImg; tempImg = null;
+            el.value = ''; el.style.height = 'auto';
+            await setDoc(doc(db, 'chats', activeChatId), { users: [my.id, activeTargetId], last: txt || 'Фото', time: serverTimestamp() }, { merge: true });
+            await addDoc(collection(db, 'chats', activeChatId, 'messages'), { sender: my.id, text: txt, img, time: serverTimestamp() });
+        }
+
+        document.getElementById('btn-send').onclick = send;
+        document.getElementById('msg-input').oninput = function() { this.style.height = 'auto'; this.style.height = (this.scrollHeight < 100 ? this.scrollHeight : 100) + 'px'; };
+        
+        // Логика "Отправка по Enter"
+        document.getElementById('msg-input').onkeydown = (e) => { 
+            if(e.key === 'Enter' && !e.shiftKey) { 
+                if(flowSettings.sendOnEnter) {
+                    e.preventDefault(); 
+                    send(); 
+                }
+            } 
+        };
+        
+        document.getElementById('back-btn').onclick = () => document.body.classList.remove('chat-active');
+
+        let tempImg = null;
+        document.getElementById('btn-clip').onclick = () => {
+            const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*';
+            i.onchange = (e) => {
+                const r = new FileReader();
+                r.onload = (ev) => { tempImg = ev.target.result; send(); };
+                r.readAsDataURL(e.target.files[0]);
+            }; i.click();
+        };
+
+        document.getElementById('btn-logout').onclick = () => { localStorage.clear(); location.reload(); };
+        window.addEventListener('beforeunload', () => { if(my && !flowSettings.hidePrivacy) updateDoc(doc(db, 'users', my.id), { online: false }); });
+    </script>
+</body>
+</html>
